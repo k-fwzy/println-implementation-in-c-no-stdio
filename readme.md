@@ -15,7 +15,7 @@ usage:
     // output: 3.141 ((missing)) whoops little clumsy :o 
 
     printlnf("{{ message: {} }}", "i am the best programmer on earth");
-    //output: { message: i am the best programmer on earth }
+    // output: { message: i am the best programmer on earth }
 
     printlnf("{ uh oh"); // messed up my formatting
     // output: println: unterminated '{'
