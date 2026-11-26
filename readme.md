@@ -2,9 +2,9 @@
 
 usage:
 ```c
-    println("hello world"); // standard new line print
+    println("hello world"); // standard line print
 
-    printlnf("9 + 10 = {}", 21); //formatted new line print
+    printlnf("9 + 10 = {}", 21); //formatted line print
 
     int* block = malloc(sizeof(int));
     *block = 21;
@@ -18,7 +18,7 @@ usage:
     //output: { message: i am the best programmer on earth }
 
     printlnf("{ uh oh"); // messed up my formatting
-    // output println: unterminated '{'
+    // output: println: unterminated '{'
 ```
 
 run:
