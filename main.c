@@ -305,7 +305,11 @@ Buffer_emitBox(
                                       .str);
             break;
         case T_PTR:
-            Buffer_emitStr(pbuf, "0x");
+            if(b->val.ptr == NULL ||
+                    b->val.ptr == nullptr){
+                Buffer_emitStr(pbuf, "((null))");
+                break;
+            }
             Buffer_emitUnsigned(pbuf,
                                 (uintptr_t)b->val
                                              .ull,
@@ -313,13 +317,144 @@ Buffer_emitBox(
             break;
     }
 }
-static void
+
+static int
 Error(
     const char *msg
 ){
     size_t n = 0;
     while(msg[n++]);
     write(2, msg, n);
+    return 1;
+}
+
+typedef struct { int base,
+                    upper,
+                    afterpoint;
+                char* prefix; } Spec;
+static int
+parseSpec(
+    const char* fmt,
+    size_t* cursor,
+    Spec* s
+){
+    size_t i = *cursor;
+
+    s->base = 10;
+    s->afterpoint = -1;
+    s->prefix = nullptr;
+    s->upper = 0;
+
+    if(fmt[i] == '}'){
+        *cursor = i + 1;
+        return 0;
+    }
+
+    if(fmt[i] != ':')
+        goto bad;
+    i += 1;
+
+    {
+        int seen_hash = 0,
+            seen_prec = 0;
+        char fmt_char = 0;
+        while(fmt[i] &&
+                fmt[i] != '}')
+        {
+            char c = fmt[i];
+            if(c == '#' &&
+                !seen_hash &&
+                !fmt_char)
+            {
+                seen_hash = 1;
+                i += 1;
+                continue;
+            }
+
+            if(c == '.' &&
+                !seen_prec &&
+                !fmt_char)
+            {
+                seen_prec = 1;
+                i += 1;
+                if(fmt[i] < '0' ||
+                        fmt[i] > '9')
+                    goto bad;
+                int prec = 0;
+                while(fmt[i] >= '0' &&
+                        fmt[i] <= '9')
+                {
+                    prec = prec * 10 + (fmt[i] - '0');
+                    if(prec > 17)
+                        prec = 17;
+                    i += 1;
+                }
+                s->afterpoint = prec;
+                continue;
+            }
+
+            if(fmt_char)
+                goto bad;
+
+            switch(c){
+                case 'b':
+                    s->base = 2; 
+                    fmt_char = c; 
+                    i += 1; break;
+                case 'o': 
+                    s->base = 8;
+                    fmt_char = c;
+                    i += 1; break;
+                case 'x':
+                    s->base = 16;
+                    fmt_char = c;
+                    i += 1; break;
+                case 'X':
+                    s->base = 16; s->upper = 1;
+                    fmt_char = c;
+                    i += 1; break;
+                case 'p':
+                    s->base = 16;
+                    fmt_char = c;
+                    i += 1; break;
+                default: 
+                    goto bad;
+            }
+        }
+
+        if(fmt[i] != '}')
+            goto bad;
+
+        if(fmt_char == 'p'){
+            s->prefix = "0x";
+        }else if(seen_hash){
+            switch(fmt_char){
+                case 'x': s->prefix = "0x";
+                            break;
+                case 'X': s->prefix = "0X";
+                            break;
+                case 'o': s->prefix = "0o";
+                            break;
+                case 'b': s->prefix = "0b";
+                            break;
+                default: 
+                    break;
+            }
+        }
+
+        *cursor = i + 1;
+        return 0;
+    }
+
+    bad:
+        i = *cursor;
+        while(fmt[i] && 
+                fmt[i] != '}')
+            i += 1;
+        if(fmt[i] == '}') 
+            i += 1;
+        *cursor = i;
+        return -1;
 }
 
 int
@@ -341,68 +476,36 @@ printlnf_impl(
         if(fmt[cursor] == '{' &&
             fmt[cursor + 1] != '{')
         {
-            placeholders++;
-            int idx = cursor + 1;
+            cursor += 1;
 
-            int base = 10,
-                afterpoint = -1,
-                upper = 0;
-
-            while(fmt[idx] &&
-                fmt[idx] != '}')
-            {
-                if(fmt[idx] == ':'){
-                    idx++;
-                    switch(fmt[idx]){
-                        case '.':
-                            idx++;
-                            base = 10; 
-                            int prec = 0,
-                                got = 0;
-                            while(fmt[idx] >= '0' && 
-                                    fmt[idx] <= '9')
-                            {
-                                prec = prec * 10 + (fmt[idx] - '0');
-                                idx++;
-                                got = 1;
-                            }
-
-                            if(got)
-                                afterpoint = prec;
-                            break;
-                        case 'b': base = 2;
-                                    idx += 2; break;
-                        case 'o': base = 8;
-                                    idx += 2; break;
-                        case 'x': base = 16; 
-                                    idx += 2; break;
-                        case 'X': base = 16;
-                                    upper = 1;
-                                    idx += 2; break;
-                        case 'p': base = 16;
-                                    idx += 2; break;
-                        default: idx += 1; break;
-                    }
-                }else
-                    idx++;
+            Spec spec = {0};
+            int ok =
+                (parseSpec(fmt,
+                            &cursor,
+                            &spec) == 0);
+            if(!ok){
+                Buffer_emitStr(&buf,
+                    "((bad spec))");
+                errs += 1;
+                if(next < argc)
+                    next += 1;
+                continue;
             }
-            cursor = idx + 1;
+            placeholders += 1;
 
-            if(fmt[idx] != '}'){
-                Error("println: unterminated '{'\n");
-                break;
-            }
-
+            if(spec.prefix)
+                Buffer_emitStr(&buf,
+                                spec.prefix);
             if(next < argc){
                 Buffer_emitBox(&buf,
                             &argv[next++],
-                            base,
-                            upper,
-                        afterpoint);
+                            spec.base,
+                            spec.upper,
+                        spec.afterpoint);
             }else{
                 Buffer_emitStr(&buf,
                             "((missing))");
-                errs++;
+                errs += 1;
             }
         }else if(fmt[cursor] == '{' &&
                     fmt[cursor + 1] == '{')
@@ -421,16 +524,17 @@ printlnf_impl(
     }
 
     if(next < argc){
+        Buffer_emitChar(&buf, '\n');
         Buffer_flush(&buf);
-        Error("println: extra argument(s) ignored\n");
-        errs++;
+        errs += Error("printlnf: extra argument(s) ignored\n");
+        return -1;
     }
 
     Buffer_emitChar(&buf, '\n');
     Buffer_flush(&buf);
     return errs
             ? -1
-            : buf.total_printed;
+            : (int)buf.total_printed;
 }
 
 #define println(str)\
@@ -445,8 +549,17 @@ main(
     void
 ){
     const char* msg = "hello world";
-    printlnf("{} {{ {} }}\n {:.4} \n\t{}", msg, 21, 3.1415);
+    printlnf("{} {{ {:#x} }}\n {:.4} \n\t{}", msg, 58, 3.1415);
     println("we are charlie kirk");
 
+    printlnf("{} {:x} {:.2}", 21, 20, 12.0);
+    printlnf("hello {}", nullptr);
+    printlnf("{:what}", 32);
+    printlnf("{:whae}, {}", "message", 30);
+    printlnf("{:.x}", 1);
+    printlnf("{:x94}", 64);
+    printlnf("{:.x", 1);
+    printlnf("{}", 1, 2);
+    printlnf("normal text {:a}", "not normal text");
     return 0;
 }
