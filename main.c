@@ -552,7 +552,7 @@ main(
     printlnf("{} {{ {:#x} }}\n {:.4} \n\t{}", msg, 58, 3.1415);
     println("we are charlie kirk");
 
-    printlnf("{} {:x} {:.2}", 21, 20, 12.0);
+    printlnf("{} {:#x} {:.2}", 21, 20, 12.0);
     printlnf("hello {}", nullptr);
     printlnf("{:what}", 32);
     printlnf("{:whae}, {}", "message", 30);
